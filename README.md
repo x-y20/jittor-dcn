@@ -1,201 +1,146 @@
 # jittor-dcn
 
-环境配置（环境配置部分省略了诸如VMware的安装、Ubuntu的安装、conda的安装等）：
+## 环境配置
+
+环境配置部分省略了诸如VMware的安装、Ubuntu的安装、conda的安装等。
 
 jittor-dcn的实现基于python3.8（最好是3.7-3.10，否则可能无法兼容jittor），以下为本项目所需的依赖库：
 
+```bash
 pip install numpy matplotlib
-
 pip install jittor
-
 pip install torch torchvision
-
 pip install mmcv-full -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.1.0/index.html
+```
 
 由于jittor在windows操作系统下兼容性不好，所以本项目在VMware pro的ubuntu 24.10虚拟机上开发。
 
-在终端输入：python -c "import jittor"
-
+在终端输入：
+```bash
+python -c "import jittor"
+```
 不报错代表jittor配置正确
 
-常见问题（运行下面的代码即可）：
+### 常见问题
 
-1.Jittor 启动过程中，无法成功识别 cc路径或者存在g++版本问题，如“AssertionError: assert jit_utils.cc”
+运行下面的代码即可：
 
+1. Jittor 启动过程中，无法成功识别 cc路径或者存在g++版本问题，如"AssertionError: assert jit_utils.cc"
+```bash
 sudo bash -c 'echo "deb http://archive.ubuntu.com/ubuntu focal main universe" >> /etc/apt/sources.list'
-
 sudo apt update
-
 sudo apt install g++-10
-
 export cc_path=/usr/bin/g++-10
-
 python3 -c "import jittor"
+```
 
-2.libstdc++版本问题，如“ImportError: libstdc++.so.6: version `GLIBCXX_3.4.30' ”
-
+2. libstdc++版本问题，如"ImportError: libstdc++.so.6: version `GLIBCXX_3.4.30' "
+```bash
 conda install -n jittor-env -c conda-forge libstdcxx-ng
-
 export cc_path=/usr/bin/g++-10
-
 python3 -c "import jittor"
+```
 
+## 数据准备脚本
 
-
-数据准备脚本：
-
+```python
 import os
-
 import numpy as np
-
 from torchvision.datasets import MNIST
-
 from torchvision import transforms
 
 def prepare_mnist_subset(output_dir="data/sample_dataset", n=100):
-
     os.makedirs(output_dir, exist_ok=True)
 
     transform = transforms.Compose([
-        
         transforms.ToTensor()
-   
     ])
 
     mnist = MNIST(root="./data", train=True, download=True, transform=transform)
 
     images = []
-    
     labels = []
 
     for i in range(n):
-     
         img, label = mnist[i]
-        
         images.append(np.array(img).astype(np.float32))
-       
         labels.append(label)
 
     X = np.stack(images, axis=0)  # [N, 1, 28, 28]
-   
     y = np.array(labels)          # [N]
 
     np.save(os.path.join(output_dir, "X.npy"), X)
-   
     np.save(os.path.join(output_dir, "y.npy"), y)
-   
     print(f"Saved {n} samples to {output_dir}")
 
 if __name__ == '__main__':
-   
     prepare_mnist_subset()
+```
 
+## 训练脚本
 
-训练脚本：
-
+```python
 import os
-
 import time
-
 import psutil
-
 import numpy as np
-
 import matplotlib.pyplot as plt
 
 # ==== PyTorch====
-
 import torch
-
 import torch.nn as tnn
-
 import torch.optim as toptim
 
 try:
-  
     from mmcv.ops import DeformConv2d as TorchDeformConv2d
-
 except ImportError:
-  
     print("mmcv not installed, skipping PyTorch training.")
-   
     TorchDeformConv2d = None
 
 
 class TorchDeformableCNN(tnn.Module):
-    
     def __init__(self):
-        
         super().__init__()
-       
         self.offset = tnn.Conv2d(1, 18, kernel_size=3, padding=1)
-      
         self.deform = TorchDeformConv2d(1, 8, kernel_size=3, padding=1)
-       
         self.relu = tnn.ReLU()
-      
         self.pool = tnn.MaxPool2d(2)
-       
         self.fc = tnn.Linear(8 * 14 * 14, 10)
 
     def forward(self, x):
-       
         offset = self.offset(x)
-      
         x = self.relu(self.deform(x, offset))
-      
         x = self.pool(x)
-       
         x = x.view(x.size(0), -1)
-       
         return self.fc(x)
 
 
 def torch_train(X, y):
-    
     model = TorchDeformableCNN()
-   
     optimizer = toptim.SGD(model.parameters(), lr=0.01)
-    
     criterion = tnn.CrossEntropyLoss()
-  
     batch_size = 10
-  
     losses = []
-    
     metrics = []
 
-    
     log_path = "compare_with_pytorch/pytorch_log.txt"
-    
     model_path = "compare_with_pytorch/pytorch_model.pth"
-   
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
     with open(log_path, "w") as f:
-       
         pass  
 
     for epoch in range(10):
-       
         start_time = time.time()
-       
         epoch_loss = 0.0
-        
         correct = 0
-       
         total = 0
-       
         grad_norm_sum = 0.0
 
         for i in range(0, len(X), batch_size):
-          
             xb = torch.tensor(X[i:i+batch_size]).float()
-          
             yb = torch.tensor(y[i:i+batch_size], dtype=torch.long)
-          
             batch_size_current = xb.size(0)
-           
             total += batch_size_current
 
             optimizer.zero_grad()
@@ -313,7 +258,7 @@ def jittor_train(X, y):
         memory_usage = psutil.Process().memory_info().rss / 1024 **2
 
         log_str = f"[Jittor] Epoch {epoch+1}, Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}, Grad Norm: {avg_grad_norm:.4f}, Time: {epoch_time:.2f}s, Memory: {memory_usage:.1f}MB"
-        print(log_str)  #
+        print(log_str)  
 
         with open(log_path, "a") as f:
             f.write(log_str + "\n")
@@ -343,7 +288,6 @@ def plot_losses(jittor_losses, torch_losses, save_path="compare_with_pytorch/los
     print(f"[Info] Saved loss comparison to {save_path}")
 
 
-
 def main():
     np.random.seed(42)
     X = np.random.rand(100, 1, 28, 28).astype(np.float32)
@@ -362,9 +306,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
 
+## 测试脚本
 
-测试脚本：
+```python
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -534,9 +480,12 @@ if __name__ == "__main__":
    plt.tight_layout()
    plt.savefig("test_predictions.png")
    print("\nPrediction visualization saved to: test_predictions.png")
+```
 
+## 实验与性能log
 
-实验与性能log：
+### Jittor训练日志
+```
 [Jittor] Epoch 1, Loss: 2.6616, Accuracy: 0.0600, Grad Norm: 28.1755, Time: 0.69s, Memory: 338.6MB
 [Jittor] Epoch 2, Loss: 2.5128, Accuracy: 0.0900, Grad Norm: 23.2172, Time: 0.08s, Memory: 338.6MB
 [Jittor] Epoch 3, Loss: 2.4398, Accuracy: 0.1200, Grad Norm: 20.4726, Time: 0.08s, Memory: 338.6MB
@@ -547,7 +496,10 @@ if __name__ == "__main__":
 [Jittor] Epoch 8, Loss: 2.2926, Accuracy: 0.1700, Grad Norm: 14.7245, Time: 0.10s, Memory: 338.7MB
 [Jittor] Epoch 9, Loss: 2.2762, Accuracy: 0.1900, Grad Norm: 14.2483, Time: 0.07s, Memory: 338.7MB
 [Jittor] Epoch 10, Loss: 2.2612, Accuracy: 0.2000, Grad Norm: 13.8976, Time: 0.10s, Memory: 338.7MB
+```
 
+### PyTorch训练日志
+```
 [PyTorch] Epoch 1, Loss: 2.3680, Accuracy: 0.1100, Grad Norm: 4.4646, Time: 0.57s, Memory: 358.9MB
 [PyTorch] Epoch 2, Loss: 2.3273, Accuracy: 0.1200, Grad Norm: 4.3160, Time: 0.27s, Memory: 358.9MB
 [PyTorch] Epoch 3, Loss: 2.3002, Accuracy: 0.1300, Grad Norm: 4.2278, Time: 0.27s, Memory: 358.9MB
@@ -558,7 +510,8 @@ if __name__ == "__main__":
 [PyTorch] Epoch 8, Loss: 2.1711, Accuracy: 0.2300, Grad Norm: 3.9099, Time: 0.29s, Memory: 359.0MB
 [PyTorch] Epoch 9, Loss: 2.1453, Accuracy: 0.2400, Grad Norm: 3.8699, Time: 0.27s, Memory: 359.0MB
 [PyTorch] Epoch 10, Loss: 2.1193, Accuracy: 0.3400, Grad Norm: 3.8364, Time: 0.27s, Memory: 359.0MB
+```
 
+## Jittor与PyTorch对齐训练曲线
 
-jittor与pytorch对齐训练曲线：
-<img width="563" height="421" alt="image" src="https://github.com/user-attachments/assets/5a1fb4a3-0881-4161-808d-3e6814095128" />
+![训练曲线对比](https://github.com/user-attachments/assets/5a1fb4a3-0881-4161-808d-3e6814095128)
