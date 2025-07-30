@@ -15,10 +15,6 @@ class DeformNet(nn.Module):
         return offset
 
 def visualize_offset_map(image, offset, title="", step=2, alpha=0.3, scale=0.5):
-    """
-    image: numpy array, shape [H, W]
-    offset: numpy array, shape [H, W, N, 2]
-    """
     H, W = image.shape
     N = offset.shape[2]
     plt.figure(figsize=(6, 6))
