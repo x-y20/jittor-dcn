@@ -4,12 +4,17 @@
 
 jittor-dcn的实现基于python3.8（最好是3.7-3.10，否则可能无法兼容jittor），以下为本项目所需的依赖库：
 pip install numpy matplotlib
+
 pip install jittor
+
 pip install torch torchvision
+
 pip install mmcv-full -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.1.0/index.html
 
 由于jittor在windows操作系统下兼容性不好，所以本项目在VMware pro的ubuntu 24.10虚拟机上开发。
+
 在终端输入：python -c "import jittor"
+
 不报错代表jittor配置正确
 
 常见问题（运行下面的代码即可）：
