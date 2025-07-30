@@ -515,3 +515,8 @@ if __name__ == "__main__":
 ## Jittor与PyTorch对齐训练曲线
 
 ![训练曲线对比](https://github.com/user-attachments/assets/5a1fb4a3-0881-4161-808d-3e6814095128)
+
+## 可变形卷积的可视化展示
+
+<img width="457" height="487" alt="image" src="https://github.com/user-attachments/assets/1948ee7e-d76c-47de-874b-3c17d35948a3" />
+
