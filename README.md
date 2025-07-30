@@ -1,5 +1,9 @@
 # jittor-dcn
 
+## 使用教程
+
+将本项目的脚本文件置于同一目录下，先运行prepare_data.py生成数据，然后依次train.py，test.py
+
 ## 环境配置
 
 环境配置部分省略了诸如VMware的安装、Ubuntu的安装、conda的安装等。
