@@ -38,13 +38,13 @@ class DeformConv2d(nn.Module):
 
         norm_x = coords[..., 0] / (W - 1) * 2 - 1
         norm_y = coords[..., 1] / (H - 1) * 2 - 1
-        grid = jt.stack([norm_x, norm_y], dim=-1)  # [B, H, W, N, 2]
+        grid = jt.stack([norm_x, norm_y], dim=-1)  
 
-        grid = grid.permute(0, 3, 1, 2, 4).reshape(B * N, H, W, 2)  # [B*N, H, W, 2]
+        grid = grid.permute(0, 3, 1, 2, 4).reshape(B * N, H, W, 2)
         x_repeat = x.unsqueeze(1).repeat(1, N, 1, 1, 1).reshape(B * N, C, H, W)
 
         sampled = nn.grid_sample(x_repeat, grid, mode='bilinear', padding_mode='zeros', align_corners=True)
-        sampled = sampled.reshape(B, N, C, H, W).permute(0, 2, 3, 4, 1)  # [B, C, H, W, N]
+        sampled = sampled.reshape(B, N, C, H, W).permute(0, 2, 3, 4, 1)
         return sampled
 
     def execute(self, x):
