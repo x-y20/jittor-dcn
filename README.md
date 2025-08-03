@@ -132,8 +132,6 @@ import psutil
 import numpy as np
 import matplotlib.pyplot as plt
 
-#======pytorch=====
-
 import torch
 import torch.nn as tnn
 import torch.optim as toptim
@@ -196,22 +194,22 @@ def compute_map(all_preds, all_gts, iou_threshold=0.5):
     return np.mean(aps) if aps else 0.0
 
 class TorchEDNetDetection(tnn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = tnn.BatchNorm2d(16)
         self.relu = tnn.ReLU(inplace=True)
 
-        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = tnn.BatchNorm2d(32)
 
-        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = tnn.BatchNorm2d(64)
 
-        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = tnn.BatchNorm2d(128)
 
-        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = tnn.BatchNorm2d(256)
 
         self.gap = tnn.AdaptiveAvgPool2d(1)
@@ -240,8 +238,12 @@ def torch_train_detection(data_dir):
     test_boxes = np.load(os.path.join(data_dir, "test_boxes.npy"), allow_pickle=True)
     test_labels = np.load(os.path.join(data_dir, "test_labels.npy"), allow_pickle=True)
 
-    model = TorchEDNetDetection()
-    optimizer = toptim.Adam(model.parameters(), lr=0.001)
+    model = TorchEDNetDetection(groups=2)
+    optimizer = toptim.Adam(
+        model.parameters(),
+        lr=0.001,
+        weight_decay=1e-4
+    )
     cls_criterion = tnn.CrossEntropyLoss()
     bbox_criterion = tnn.SmoothL1Loss()
 
@@ -346,7 +348,6 @@ def torch_train_detection(data_dir):
     torch.save(model.state_dict(), model_path)
     return losses
 
-#======jittor=====
 
 import jittor as jt
 from jittor import nn
@@ -355,22 +356,22 @@ jt.flags.use_cuda = 0
 
 
 class JittorEDNetDetection(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = nn.BatchNorm2d(32)
 
-        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = nn.BatchNorm2d(64)
 
-        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = nn.BatchNorm2d(128)
 
-        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = nn.BatchNorm2d(256)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
@@ -399,8 +400,12 @@ def jittor_train_detection(data_dir):
     test_boxes = np.load(os.path.join(data_dir, "test_boxes.npy"), allow_pickle=True)
     test_labels = np.load(os.path.join(data_dir, "test_labels.npy"), allow_pickle=True)
 
-    model = JittorEDNetDetection()
-    optimizer = nn.Adam(model.parameters(), lr=0.001)
+    model = JittorEDNetDetection(groups=2)
+    optimizer = nn.Adam(
+        model.parameters(),
+        lr=0.001,
+        weight_decay=1e-4
+    )
     cls_criterion = nn.CrossEntropyLoss()
 
     def jittor_smooth_l1_loss(pred, target, beta=1.0):
@@ -569,22 +574,22 @@ def load_model(model, model_path, framework):
     return model
 
 class TorchEDNetDetection(tnn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = tnn.BatchNorm2d(16)
         self.relu = tnn.ReLU(inplace=True)
 
-        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = tnn.BatchNorm2d(32)
 
-        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = tnn.BatchNorm2d(64)
 
-        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = tnn.BatchNorm2d(128)
 
-        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = tnn.BatchNorm2d(256)
 
         self.gap = tnn.AdaptiveAvgPool2d(1)
@@ -605,22 +610,22 @@ class TorchEDNetDetection(tnn.Module):
 
 
 class JittorEDNetDetection(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = nn.BatchNorm2d(32)
 
-        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = nn.BatchNorm2d(64)
 
-        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = nn.BatchNorm2d(128)
 
-        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = nn.BatchNorm2d(256)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
@@ -742,30 +747,30 @@ if __name__ == "__main__":
 
 ### Jittor训练日志
 ```
-[Jittor] Epoch 1, Total Loss: 2.4134, Cls Loss: 2.2790, BBox Loss: 0.0269, mAP: 0.0000, Time: 10.97s, Memory: 362.1MB
-[Jittor] Epoch 2, Total Loss: 2.2300, Cls Loss: 2.0975, BBox Loss: 0.0265, mAP: 0.0084, Time: 6.81s, Memory: 320.9MB
-[Jittor] Epoch 3, Total Loss: 1.9987, Cls Loss: 1.8660, BBox Loss: 0.0265, mAP: 0.0289, Time: 5.09s, Memory: 320.9MB
-[Jittor] Epoch 4, Total Loss: 1.7333, Cls Loss: 1.6026, BBox Loss: 0.0261, mAP: 0.0091, Time: 5.10s, Memory: 320.9MB
-[Jittor] Epoch 5, Total Loss: 1.4637, Cls Loss: 1.3334, BBox Loss: 0.0261, mAP: 0.0021, Time: 5.19s, Memory: 320.9MB
-[Jittor] Epoch 6, Total Loss: 1.1954, Cls Loss: 1.0670, BBox Loss: 0.0257, mAP: 0.0167, Time: 5.15s, Memory: 320.9MB
-[Jittor] Epoch 7, Total Loss: 0.9856, Cls Loss: 0.8577, BBox Loss: 0.0256, mAP: 0.0187, Time: 5.46s, Memory: 320.9MB
-[Jittor] Epoch 8, Total Loss: 0.6820, Cls Loss: 0.5544, BBox Loss: 0.0255, mAP: 0.0050, Time: 5.09s, Memory: 320.9MB
-[Jittor] Epoch 9, Total Loss: 0.4574, Cls Loss: 0.3326, BBox Loss: 0.0250, mAP: 0.0073, Time: 5.24s, Memory: 317.4MB
-[Jittor] Epoch 10, Total Loss: 0.3139, Cls Loss: 0.1909, BBox Loss: 0.0246, mAP: 0.0024, Time: 5.56s, Memory: 317.4MB
+[Jittor] Epoch 1, Total Loss: 2.4170, Cls Loss: 2.2828, BBox Loss: 0.0268, mAP: 0.0000, Time: 39.18s, Memory: 363.8MB
+[Jittor] Epoch 2, Total Loss: 2.2762, Cls Loss: 2.1453, BBox Loss: 0.0262, mAP: 0.0000, Time: 4.97s, Memory: 364.2MB
+[Jittor] Epoch 3, Total Loss: 2.0799, Cls Loss: 1.9497, BBox Loss: 0.0260, mAP: 0.0132, Time: 4.48s, Memory: 365.2MB
+[Jittor] Epoch 4, Total Loss: 1.8026, Cls Loss: 1.6750, BBox Loss: 0.0255, mAP: 0.0000, Time: 4.53s, Memory: 365.2MB
+[Jittor] Epoch 5, Total Loss: 1.4974, Cls Loss: 1.3696, BBox Loss: 0.0256, mAP: 0.0261, Time: 4.42s, Memory: 365.2MB
+[Jittor] Epoch 6, Total Loss: 1.1181, Cls Loss: 0.9929, BBox Loss: 0.0250, mAP: 0.0000, Time: 4.30s, Memory: 365.2MB
+[Jittor] Epoch 7, Total Loss: 0.7810, Cls Loss: 0.6567, BBox Loss: 0.0249, mAP: 0.0261, Time: 4.59s, Memory: 365.2MB
+[Jittor] Epoch 8, Total Loss: 0.5087, Cls Loss: 0.3847, BBox Loss: 0.0248, mAP: 0.0050, Time: 4.28s, Memory: 365.2MB
+[Jittor] Epoch 9, Total Loss: 0.3349, Cls Loss: 0.2144, BBox Loss: 0.0241, mAP: 0.0100, Time: 4.26s, Memory: 365.2MB
+[Jittor] Epoch 10, Total Loss: 0.2502, Cls Loss: 0.1338, BBox Loss: 0.0233, mAP: 0.0200, Time: 4.26s, Memory: 365.2MB
 ```
 
 ### PyTorch训练日志
 ```
-[PyTorch] Epoch 1, Total Loss: 2.4213, Cls Loss: 2.2851, BBox Loss: 0.0272, mAP: 0.0083, Time: 5.00s, Memory: 464.2MB
-[PyTorch] Epoch 2, Total Loss: 2.2536, Cls Loss: 2.1224, BBox Loss: 0.0262, mAP: 0.0000, Time: 4.10s, Memory: 464.2MB
-[PyTorch] Epoch 3, Total Loss: 2.0870, Cls Loss: 1.9565, BBox Loss: 0.0261, mAP: 0.0010, Time: 4.25s, Memory: 464.2MB
-[PyTorch] Epoch 4, Total Loss: 1.8690, Cls Loss: 1.7384, BBox Loss: 0.0261, mAP: 0.0000, Time: 4.63s, Memory: 474.1MB
-[PyTorch] Epoch 5, Total Loss: 1.5661, Cls Loss: 1.4362, BBox Loss: 0.0260, mAP: 0.0067, Time: 6.65s, Memory: 442.2MB
-[PyTorch] Epoch 6, Total Loss: 1.2608, Cls Loss: 1.1320, BBox Loss: 0.0258, mAP: 0.0000, Time: 9.24s, Memory: 425.2MB
-[PyTorch] Epoch 7, Total Loss: 0.9167, Cls Loss: 0.7887, BBox Loss: 0.0256, mAP: 0.0311, Time: 5.18s, Memory: 434.9MB
-[PyTorch] Epoch 8, Total Loss: 0.5995, Cls Loss: 0.4727, BBox Loss: 0.0254, mAP: 0.0100, Time: 4.64s, Memory: 434.9MB
-[PyTorch] Epoch 9, Total Loss: 0.4057, Cls Loss: 0.2826, BBox Loss: 0.0246, mAP: 0.0000, Time: 4.29s, Memory: 434.9MB
-[PyTorch] Epoch 10, Total Loss: 0.2802, Cls Loss: 0.1600, BBox Loss: 0.0240, mAP: 0.0000, Time: 4.28s, Memory: 434.9MB
+[PyTorch] Epoch 1, Total Loss: 2.4310, Cls Loss: 2.2946, BBox Loss: 0.0273, mAP: 0.0000, Time: 3.94s, Memory: 492.6MB
+[PyTorch] Epoch 2, Total Loss: 2.2869, Cls Loss: 2.1542, BBox Loss: 0.0265, mAP: 0.0000, Time: 3.46s, Memory: 492.6MB
+[PyTorch] Epoch 3, Total Loss: 2.0868, Cls Loss: 1.9563, BBox Loss: 0.0261, mAP: 0.0000, Time: 3.53s, Memory: 492.6MB
+[PyTorch] Epoch 4, Total Loss: 1.8548, Cls Loss: 1.7254, BBox Loss: 0.0259, mAP: 0.0000, Time: 3.51s, Memory: 492.6MB
+[PyTorch] Epoch 5, Total Loss: 1.5870, Cls Loss: 1.4575, BBox Loss: 0.0259, mAP: 0.0000, Time: 3.47s, Memory: 492.6MB
+[PyTorch] Epoch 6, Total Loss: 1.2328, Cls Loss: 1.1049, BBox Loss: 0.0256, mAP: 0.0000, Time: 3.54s, Memory: 492.6MB
+[PyTorch] Epoch 7, Total Loss: 0.9362, Cls Loss: 0.8097, BBox Loss: 0.0253, mAP: 0.0100, Time: 3.58s, Memory: 492.6MB
+[PyTorch] Epoch 8, Total Loss: 0.6362, Cls Loss: 0.5112, BBox Loss: 0.0250, mAP: 0.0000, Time: 3.79s, Memory: 492.6MB
+[PyTorch] Epoch 9, Total Loss: 0.4222, Cls Loss: 0.2974, BBox Loss: 0.0250, mAP: 0.0000, Time: 3.54s, Memory: 487.6MB
+[PyTorch] Epoch 10, Total Loss: 0.3105, Cls Loss: 0.1902, BBox Loss: 0.0241, mAP: 0.0050, Time: 3.48s, Memory: 492.6MB
 ```
 
 ## Jittor与PyTorch对齐训练曲线
