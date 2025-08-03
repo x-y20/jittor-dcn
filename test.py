@@ -20,22 +20,22 @@ def load_model(model, model_path, framework):
     return model
 
 class TorchEDNetDetection(tnn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = tnn.BatchNorm2d(16)
         self.relu = tnn.ReLU(inplace=True)
 
-        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = tnn.BatchNorm2d(32)
 
-        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = tnn.BatchNorm2d(64)
 
-        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = tnn.BatchNorm2d(128)
 
-        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = tnn.BatchNorm2d(256)
 
         self.gap = tnn.AdaptiveAvgPool2d(1)
@@ -56,22 +56,22 @@ class TorchEDNetDetection(tnn.Module):
 
 
 class JittorEDNetDetection(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = nn.BatchNorm2d(32)
 
-        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = nn.BatchNorm2d(64)
 
-        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = nn.BatchNorm2d(128)
 
-        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = nn.BatchNorm2d(256)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
