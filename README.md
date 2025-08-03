@@ -775,7 +775,7 @@ if __name__ == "__main__":
 
 ## Jittor与PyTorch对齐训练曲线
 
-<img width="562" height="421" alt="image" src="https://github.com/user-attachments/assets/50dac31f-db46-49f6-8527-70ac40b0f4b1" />
+<img width="598" height="448" alt="image" src="https://github.com/user-attachments/assets/4a4c9c36-8dd8-4632-8c71-ec039c92a8f8" />
 
 
 ## 可变形卷积的可视化展示
