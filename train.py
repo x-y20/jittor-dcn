@@ -66,22 +66,22 @@ def compute_map(all_preds, all_gts, iou_threshold=0.5):
     return np.mean(aps) if aps else 0.0
 
 class TorchEDNetDetection(tnn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = tnn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = tnn.BatchNorm2d(16)
         self.relu = tnn.ReLU(inplace=True)
 
-        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = tnn.BatchNorm2d(32)
 
-        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = tnn.BatchNorm2d(64)
 
-        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = tnn.BatchNorm2d(128)
 
-        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = tnn.BatchNorm2d(256)
 
         self.gap = tnn.AdaptiveAvgPool2d(1)
@@ -110,8 +110,12 @@ def torch_train_detection(data_dir):
     test_boxes = np.load(os.path.join(data_dir, "test_boxes.npy"), allow_pickle=True)
     test_labels = np.load(os.path.join(data_dir, "test_labels.npy"), allow_pickle=True)
 
-    model = TorchEDNetDetection()
-    optimizer = toptim.Adam(model.parameters(), lr=0.001)
+    model = TorchEDNetDetection(groups=2)
+    optimizer = toptim.Adam(
+        model.parameters(),
+        lr=0.001,
+        weight_decay=1e-4
+    )
     cls_criterion = tnn.CrossEntropyLoss()
     bbox_criterion = tnn.SmoothL1Loss()
 
@@ -224,22 +228,22 @@ jt.flags.use_cuda = 0
 
 
 class JittorEDNetDetection(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, groups=2):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1)
+        self.conv1 = nn.Conv2d(1, 16, 3, 1, 1, groups=1)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1)
+        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1, groups=groups)
         self.bn2 = nn.BatchNorm2d(32)
 
-        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1)
+        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1, groups=groups)
         self.bn3 = nn.BatchNorm2d(64)
 
-        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1)
+        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1, groups=groups)
         self.bn4 = nn.BatchNorm2d(128)
 
-        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1)
+        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1, groups=groups)
         self.bn5 = nn.BatchNorm2d(256)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
@@ -268,8 +272,12 @@ def jittor_train_detection(data_dir):
     test_boxes = np.load(os.path.join(data_dir, "test_boxes.npy"), allow_pickle=True)
     test_labels = np.load(os.path.join(data_dir, "test_labels.npy"), allow_pickle=True)
 
-    model = JittorEDNetDetection()
-    optimizer = nn.Adam(model.parameters(), lr=0.001)
+    model = JittorEDNetDetection(groups=2)
+    optimizer = nn.Adam(
+        model.parameters(),
+        lr=0.001,
+        weight_decay=1e-4
+    )
     cls_criterion = nn.CrossEntropyLoss()
 
     def jittor_smooth_l1_loss(pred, target, beta=1.0):
