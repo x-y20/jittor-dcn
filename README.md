@@ -128,6 +128,7 @@ if __name__ == '__main__':
 ```python
 import os
 import time
+import math
 import psutil
 import numpy as np
 import matplotlib.pyplot as plt
@@ -193,6 +194,79 @@ def compute_map(all_preds, all_gts, iou_threshold=0.5):
 
     return np.mean(aps) if aps else 0.0
 
+
+class TorchDeformConv2d(tnn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        self.padding = padding if isinstance(padding, tuple) else (padding, padding)
+        self.N = self.kernel_size[0] * self.kernel_size[1]
+
+        self.offset_conv = tnn.Conv2d(
+            in_channels, 2 * self.N,
+            kernel_size=self.kernel_size,
+            stride=self.stride,
+            padding=self.padding
+        )
+
+        std = math.sqrt(2.0 / (in_channels * self.kernel_size[0] * self.kernel_size[1]))
+        self.weight = tnn.Parameter(torch.empty(out_channels, in_channels, *self.kernel_size))
+        tnn.init.normal_(self.weight, mean=0.0, std=std)
+        self.bias = tnn.Parameter(torch.zeros(out_channels)) if bias else None
+
+        tnn.init.zeros_(self.offset_conv.weight)
+        tnn.init.zeros_(self.offset_conv.bias)
+
+    def forward(self, x):
+        B, C, H_in, W_in = x.shape
+
+        offset = self.offset_conv(x)
+        B, _, H_out, W_out = offset.shape
+        N = self.N
+
+        offset = offset.view(B, 2, N, H_out, W_out).permute(0, 3, 4, 2, 1)
+
+        yv, xv = torch.meshgrid(torch.arange(H_out), torch.arange(W_out), indexing='ij')
+        yv = yv.view(1, H_out, W_out, 1).repeat(B, 1, 1, N)
+        xv = xv.view(1, H_out, W_out, 1).repeat(B, 1, 1, N)
+        grid = torch.stack([xv, yv], dim=-1).float()
+
+        sampling_locs = grid + offset
+
+        x_norm = sampling_locs[..., 0] / (W_in - 1) * 2 - 1
+        y_norm = sampling_locs[..., 1] / (H_in - 1) * 2 - 1
+        grid_norm = torch.stack([y_norm, x_norm], dim=-1)
+
+        x_repeat = x.unsqueeze(1).repeat(1, N, 1, 1, 1)
+        x_repeat = x_repeat.reshape(B * N, C, H_in, W_in)
+
+        grid_norm = grid_norm.permute(0, 3, 1, 2, 4)
+        grid_norm = grid_norm.reshape(B * N, H_out, W_out, 2)
+
+        sampled = F.grid_sample(
+            x_repeat,
+            grid_norm,
+            mode='bilinear',
+            padding_mode='zeros',
+            align_corners=True
+        )
+
+        sampled = sampled.reshape(B, N, C, H_out, W_out).permute(0, 2, 3, 4, 1)
+        sampled_flat = sampled.reshape(B, H_out, W_out, -1)
+        sampled_flat = sampled_flat.reshape(-1, C * N)
+
+        weight_mat = self.weight.reshape(self.out_channels, -1)
+        out_flat = torch.matmul(sampled_flat, weight_mat.t())
+
+        out = out_flat.reshape(B, H_out, W_out, self.out_channels).permute(0, 3, 1, 2)
+        if self.bias is not None:
+            out = out + self.bias.view(1, -1, 1, 1)
+
+        return out
+
 class TorchEDNetDetection(tnn.Module):
     def __init__(self, num_classes=10, groups=2):
         super().__init__()
@@ -200,16 +274,16 @@ class TorchEDNetDetection(tnn.Module):
         self.bn1 = tnn.BatchNorm2d(16)
         self.relu = tnn.ReLU(inplace=True)
 
-        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1, groups=groups)
+        self.conv2 = TorchDeformConv2d(16, 32, 3, 2, 1)
         self.bn2 = tnn.BatchNorm2d(32)
 
-        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1, groups=groups)
+        self.conv3 = TorchDeformConv2d(32, 64, 3, 2, 1)
         self.bn3 = tnn.BatchNorm2d(64)
 
-        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1, groups=groups)
+        self.conv4 = TorchDeformConv2d(64, 128, 3, 2, 1)
         self.bn4 = tnn.BatchNorm2d(128)
 
-        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1, groups=groups)
+        self.conv5 = TorchDeformConv2d(128, 256, 3, 2, 1)
         self.bn5 = tnn.BatchNorm2d(256)
 
         self.gap = tnn.AdaptiveAvgPool2d(1)
@@ -227,7 +301,6 @@ class TorchEDNetDetection(tnn.Module):
         cls = self.fc_cls(x)
         bbox = torch.sigmoid(self.fc_bbox(x))
         return cls, bbox
-
 
 def torch_train_detection(data_dir):
     train_images = np.load(os.path.join(data_dir, "train_images.npy"))
@@ -263,7 +336,7 @@ def torch_train_detection(data_dir):
     with open(log_path, "w") as f:
         pass
 
-    for epoch in range(10):
+    for epoch in range(1):
         start_time = time.time()
         epoch_cls_loss = 0.0
         epoch_bbox_loss = 0.0
@@ -351,6 +424,7 @@ def torch_train_detection(data_dir):
 
 import jittor as jt
 from jittor import nn
+from deform_conv import DeformConv2d
 
 jt.flags.use_cuda = 0
 
@@ -362,16 +436,16 @@ class JittorEDNetDetection(nn.Module):
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1, groups=groups)
+        self.conv2 = DeformConv2d(16, 32, 3, 2, 1)
         self.bn2 = nn.BatchNorm2d(32)
 
-        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1, groups=groups)
+        self.conv3 = DeformConv2d(32, 64, 3, 2, 1)
         self.bn3 = nn.BatchNorm2d(64)
 
-        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1, groups=groups)
+        self.conv4 = DeformConv2d(64, 128, 3, 2, 1)
         self.bn4 = nn.BatchNorm2d(128)
 
-        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1, groups=groups)
+        self.conv5 = DeformConv2d(128, 256, 3, 2, 1)
         self.bn5 = nn.BatchNorm2d(256)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
@@ -427,7 +501,7 @@ def jittor_train_detection(data_dir):
     with open(log_path, "w") as f:
         pass
 
-    for epoch in range(10):
+    for epoch in range(1):
         start_time = time.time()
         epoch_cls_loss = 0.0
         epoch_bbox_loss = 0.0
@@ -563,6 +637,8 @@ import torch.nn as tnn
 
 import jittor as jt
 from jittor import nn
+from deform_conv import DeformConv2d
+from train import TorchDeformConv2d
 
 jt.flags.use_cuda = 0
 
@@ -580,16 +656,16 @@ class TorchEDNetDetection(tnn.Module):
         self.bn1 = tnn.BatchNorm2d(16)
         self.relu = tnn.ReLU(inplace=True)
 
-        self.conv2 = tnn.Conv2d(16, 32, 3, 2, 1, groups=groups)
+        self.conv2 = TorchDeformConv2d(16, 32, 3, 2, 1)
         self.bn2 = tnn.BatchNorm2d(32)
 
-        self.conv3 = tnn.Conv2d(32, 64, 3, 2, 1, groups=groups)
+        self.conv3 = TorchDeformConv2d(32, 64, 3, 2, 1)
         self.bn3 = tnn.BatchNorm2d(64)
 
-        self.conv4 = tnn.Conv2d(64, 128, 3, 2, 1, groups=groups)
+        self.conv4 = TorchDeformConv2d(64, 128, 3, 2, 1)
         self.bn4 = tnn.BatchNorm2d(128)
 
-        self.conv5 = tnn.Conv2d(128, 256, 3, 2, 1, groups=groups)
+        self.conv5 = TorchDeformConv2d(128, 256, 3, 2, 1)
         self.bn5 = tnn.BatchNorm2d(256)
 
         self.gap = tnn.AdaptiveAvgPool2d(1)
@@ -608,7 +684,6 @@ class TorchEDNetDetection(tnn.Module):
         bbox = torch.sigmoid(self.fc_bbox(x))
         return cls, bbox
 
-
 class JittorEDNetDetection(nn.Module):
     def __init__(self, num_classes=10, groups=2):
         super().__init__()
@@ -616,16 +691,16 @@ class JittorEDNetDetection(nn.Module):
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(16, 32, 3, 2, 1, groups=groups)
+        self.conv2 = DeformConv2d(16, 32, 3, 2, 1)
         self.bn2 = nn.BatchNorm2d(32)
 
-        self.conv3 = nn.Conv2d(32, 64, 3, 2, 1, groups=groups)
+        self.conv3 = DeformConv2d(32, 64, 3, 2, 1)
         self.bn3 = nn.BatchNorm2d(64)
 
-        self.conv4 = nn.Conv2d(64, 128, 3, 2, 1, groups=groups)
+        self.conv4 = DeformConv2d(64, 128, 3, 2, 1)
         self.bn4 = nn.BatchNorm2d(128)
 
-        self.conv5 = nn.Conv2d(128, 256, 3, 2, 1, groups=groups)
+        self.conv5 = DeformConv2d(128, 256, 3, 2, 1)
         self.bn5 = nn.BatchNorm2d(256)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
@@ -643,7 +718,6 @@ class JittorEDNetDetection(nn.Module):
         cls = self.fc_cls(x)
         bbox = jt.sigmoid(self.fc_bbox(x))
         return cls, bbox
-
 
 def visualize_detection(image, true_boxes, true_labels, pred_box, pred_label, save_path=None):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
