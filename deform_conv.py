@@ -9,65 +9,78 @@ class DeformConv2d(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride
-        self.padding = padding
-
-        N = self.kernel_size[0] * self.kernel_size[1]
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        self.padding = padding if isinstance(padding, tuple) else (padding, padding)
+        self.N = self.kernel_size[0] * self.kernel_size[1]
 
         self.offset_conv = nn.Conv(
-            in_channels, 2 * N,
+            in_channels, 2 * self.N,
             kernel_size=self.kernel_size,
-            stride=stride,
-            padding=padding
+            stride=self.stride,
+            padding=self.padding
         )
 
         std = math.sqrt(2.0 / (in_channels * self.kernel_size[0] * self.kernel_size[1]))
-        self.weight = jt.init.gauss([
-            out_channels, in_channels, *self.kernel_size
-        ], mean=0.0, std=std)
-
+        self.weight = jt.init.gauss([out_channels, in_channels, *self.kernel_size], mean=0.0, std=std)
         self.bias = jt.init.constant(shape=[out_channels], value=0.0) if bias else None
 
         self.offset_conv.weight = jt.zeros_like(self.offset_conv.weight)
         self.offset_conv.bias = jt.zeros_like(self.offset_conv.bias)
 
-
     def grid_sample_wrapper(self, x, coords):
         B, C, H, W = x.shape
-        N = coords.shape[3]
+        N = self.N
 
-        norm_x = coords[..., 0] / (W - 1) * 2 - 1
-        norm_y = coords[..., 1] / (H - 1) * 2 - 1
-        grid = jt.stack([norm_x, norm_y], dim=-1)  
+        H_out = (H + 2 * self.padding[0] - self.kernel_size[0]) // self.stride[0] + 1
+        W_out = (W + 2 * self.padding[1] - self.kernel_size[1]) // self.stride[1] + 1
 
-        grid = grid.permute(0, 3, 1, 2, 4).reshape(B * N, H, W, 2)
-        x_repeat = x.unsqueeze(1).repeat(1, N, 1, 1, 1).reshape(B * N, C, H, W)
+        norm_x = coords[..., 0] / (W_out - 1) * 2 - 1
+        norm_y = coords[..., 1] / (H_out - 1) * 2 - 1
+        grid = jt.stack([norm_y, norm_x], dim=-1)
 
-        sampled = nn.grid_sample(x_repeat, grid, mode='bilinear', padding_mode='zeros', align_corners=True)
-        sampled = sampled.reshape(B, N, C, H, W).permute(0, 2, 3, 4, 1)
-        return sampled
+        x_repeat = x.unsqueeze(1).repeat(1, N, 1, 1, 1)
+        x_repeat = x_repeat.reshape(B*N, C, H, W)
+
+        grid_reshaped = grid.permute(0, 3, 1, 2, 4)
+        grid_reshaped = grid_reshaped.reshape(B*N, H_out, W_out, 2)
+
+        sampled = nn.grid_sample(
+            x_repeat, grid_reshaped,
+            mode='bilinear',
+            padding_mode='zeros',
+            align_corners=True
+        )
+
+        return sampled.reshape(B, N, C, H_out, W_out).permute(0, 2, 3, 4, 1)
 
     def execute(self, x):
+        B, C, H, W = x.shape
         offset = self.offset_conv(x)
-        B, _, H, W = offset.shape
-        N = self.kernel_size[0] * self.kernel_size[1]
+        H_out = offset.shape[2]
+        W_out = offset.shape[3]
 
-        offset = offset.view(B, 2, N, H, W).permute(0, 3, 4, 2, 1)
+        offset = offset.view(B, 2, self.N, H_out, W_out).permute(0, 3, 4, 2, 1)
 
-        yv = jt.arange(H).view(1, H, 1, 1).repeat(B, 1, W, N)
-        xv = jt.arange(W).view(1, 1, W, 1).repeat(B, H, 1, N)
+        yv = jt.arange(H_out, dtype=jt.float32).view(1, H_out, 1, 1).repeat(B, 1, W_out, self.N)
+        xv = jt.arange(W_out, dtype=jt.float32).view(1, 1, W_out, 1).repeat(B, H_out, 1, self.N)
         grid = jt.stack([xv, yv], dim=-1)
 
-        sampling_locs = grid + offset 
+        sampling_locs = grid + offset
+
         sampled = self.grid_sample_wrapper(x, sampling_locs)
-        sampled = sampled.permute(0, 2, 3, 4, 1).reshape(B, H, W, -1)
 
-        weight_mat = self.weight.reshape(self.out_channels, -1)
-        sampled_flat = sampled.reshape(B * H * W, -1)
-        wm = weight_mat.transpose(1, 0)
+        sampled = sampled.permute(0, 2, 3, 4, 1)
+        sampled_flat = sampled.reshape(B * H_out * W_out, self.N * C)
+        weight_mat = self.weight.reshape(self.out_channels, -1).transpose(1, 0)
 
-        out_flat = jt.matmul(sampled_flat, wm)
-        out = out_flat.reshape(B, H, W, self.out_channels).permute(0, 3, 1, 2)
+        out_flat = jt.matmul(sampled_flat, weight_mat)
+        out = out_flat.reshape(B, H_out, W_out, self.out_channels).permute(0, 3, 1, 2)
+
+        if self.bias is not None:
+            out = out + self.bias.view(1, -1, 1, 1)
+        return out
+
+
 
 class DeformRoIPool(nn.Module):
     def __init__(self, output_size, spatial_scale=1.0, sampling_ratio=1):
@@ -227,6 +240,3 @@ class DeformPSRoIPool(nn.Module):
         output = (val00 + val01 + val10 + val11).sum(dim=2)
         return output.reshape(num_rois, C_out, pooled_h, pooled_w)
 
-        if self.bias is not None:
-            out = out + self.bias.view(1, -1, 1, 1)
-        return out
